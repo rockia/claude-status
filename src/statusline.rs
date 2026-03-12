@@ -212,9 +212,18 @@ mod tests {
         let lines = render(&parsed);
         assert!(!lines.is_empty(), "render must produce at least one line");
         let session_line = &lines[0];
-        assert!(session_line.contains("Opus"), "session line must contain model name");
-        assert!(session_line.contains("25%"), "session line must contain context percentage");
-        assert!(session_line.contains("$0.45"), "session line must contain cost");
+        assert!(
+            session_line.contains("Opus"),
+            "session line must contain model name"
+        );
+        assert!(
+            session_line.contains("25%"),
+            "session line must contain context percentage"
+        );
+        assert!(
+            session_line.contains("$0.45"),
+            "session line must contain cost"
+        );
     }
 
     /// Regression test: flat string "model" field (old format) must NOT parse
@@ -224,6 +233,9 @@ mod tests {
         let old_json = r#"{"model":"sonnet 4.6","contextWindow":200000,"tokensUsed":96000}"#;
         // The old flat "model": "string" should fail to deserialize into ModelInfo
         let result = serde_json::from_str::<StdinInput>(old_json);
-        assert!(result.is_err(), "old flat JSON format should not parse into new struct");
+        assert!(
+            result.is_err(),
+            "old flat JSON format should not parse into new struct"
+        );
     }
 }
