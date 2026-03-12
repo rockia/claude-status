@@ -18,6 +18,7 @@ pub struct ContextWindow {
     #[serde(default)]
     pub used_percentage: Option<f64>,
     #[serde(default)]
+    #[allow(dead_code)]
     pub remaining_percentage: Option<f64>,
 }
 
@@ -48,8 +49,10 @@ pub struct StdinInput {
     #[serde(default)]
     pub cost: CostInfo,
     #[serde(default)]
+    #[allow(dead_code)]
     pub session_id: String,
     #[serde(default)]
+    #[allow(dead_code)]
     pub version: String,
 }
 
