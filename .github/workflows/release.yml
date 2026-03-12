@@ -1,0 +1,89 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: [self-hosted, macOS, ARM64]
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            artifact: csl-aarch64-macos
+          - target: x86_64-apple-darwin
+            artifact: csl-x86_64-macos
+          - target: x86_64-unknown-linux-gnu
+            artifact: csl-x86_64-linux
+            cross: true
+          - target: aarch64-unknown-linux-gnu
+            artifact: csl-aarch64-linux
+            cross: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        run: |
+          if ! command -v rustup &> /dev/null; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          fi
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Install cargo-zigbuild and zig
+        if: matrix.cross
+        run: |
+          if ! command -v zig &> /dev/null; then
+            brew install zig
+          fi
+          cargo install cargo-zigbuild
+
+      - name: Add target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Build release binary (native)
+        if: ${{ !matrix.cross }}
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Build release binary (cross)
+        if: matrix.cross
+        run: cargo zigbuild --release --target ${{ matrix.target }}
+
+      - name: Package binary
+        run: |
+          mkdir -p dist
+          cp target/${{ matrix.target }}/release/csl dist/csl
+          cd dist
+          tar czf ${{ matrix.artifact }}.tar.gz csl
+          shasum -a 256 ${{ matrix.artifact }}.tar.gz > ${{ matrix.artifact }}.tar.gz.sha256
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.tar.gz*
+
+  release:
+    needs: build
+    runs-on: [self-hosted, macOS, ARM64]
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --generate-notes \
+            artifacts/*
