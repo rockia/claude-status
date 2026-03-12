@@ -83,11 +83,10 @@ Claude Code pipes JSON to the statusline binary via stdin:
 
 ```json
 {
-  "model": "sonnet 4.6",
-  "contextWindow": 200000,
-  "tokensUsed": 96000,
-  "workingDirectory": "/Users/you/projects",
-  "sessionStartTime": "2025-03-12T10:30:00Z"
+  "model": { "id": "claude-sonnet-4-6", "display_name": "Sonnet" },
+  "context_window": { "used_percentage": 48, "remaining_percentage": 52 },
+  "workspace": { "current_dir": "/Users/you/projects", "project_dir": "/Users/you/projects" },
+  "cost": { "total_cost_usd": 0.12, "total_duration_ms": 45000 }
 }
 ```
 
