@@ -5,6 +5,7 @@ edition = "2024"
 description = "A fast, single-binary statusline for Claude Code"
 
 [dependencies]
+chrono = "0.4"
 clap = { version = "4", features = ["derive"] }
 dirs = "6"
 gix = { version = "0.72", default-features = false, features = ["index", "worktree-stream"] }

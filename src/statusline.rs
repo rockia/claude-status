@@ -73,6 +73,9 @@ pub fn run() {
     }
 }
 
+/// Label column width — "current" is the longest at 7 chars.
+const LABEL_WIDTH: usize = 7;
+
 fn render(input: &StdinInput) -> Vec<String> {
     let mut lines = Vec::new();
 
@@ -130,16 +133,54 @@ fn render(input: &StdinInput) -> Vec<String> {
 
     // --- Rate limit lines ---
     if let Some(usage_data) = usage::get_usage() {
-        for limit in &usage_data.rate_limits {
-            let limit_bar = format::colorized_progress_bar(limit.usage_percentage);
-            lines.push(format!(
-                "{}  {}  {}",
-                limit.window_label, limit_bar, limit.reset_info
-            ));
-        }
+        render_limits(&mut lines, &usage_data);
     }
 
     lines
+}
+
+fn render_limits(lines: &mut Vec<String>, data: &usage::UsageData) {
+    // current line
+    if let Some(ref current) = data.current {
+        let label = format!("{:<width$}", "current", width = LABEL_WIDTH);
+        let bar = format::colorized_progress_bar(current.utilization);
+        let reset = match &current.resets_at {
+            Some(ts) => format!(" \u{21BB}{}", usage::format_reset_time(ts, true)),
+            None => String::new(),
+        };
+        lines.push(format!("{label} {bar}{reset}"));
+    }
+
+    // weekly line
+    if let Some(ref weekly) = data.weekly {
+        let label = format!("{:<width$}", "weekly", width = LABEL_WIDTH);
+        let bar = format::colorized_progress_bar(weekly.utilization);
+        let reset = match &weekly.resets_at {
+            Some(ts) => format!(" \u{21BB}{}", usage::format_reset_time(ts, false)),
+            None => String::new(),
+        };
+        lines.push(format!("{label} {bar}{reset}"));
+    }
+
+    // extra line
+    if let Some(ref extra) = data.extra {
+        let label = format!("{:<width$}", "extra", width = LABEL_WIDTH);
+        let used = extra.used_credits.unwrap_or(0.0);
+        let limit = extra.monthly_limit.unwrap_or(0.0);
+        let pct = if limit > 0.0 {
+            (used / limit * 100.0).clamp(0.0, 100.0)
+        } else {
+            extra.utilization.unwrap_or(0.0)
+        };
+        let bar = format::colorized_progress_bar(pct);
+        let dollars = format!("${:.2}/${:.2}", used, limit);
+        lines.push(format!("{label} {bar} {dollars}"));
+
+        // resets line
+        if let Some(ref ts) = extra.resets_at {
+            lines.push(format!("resets {}", usage::format_reset_date(ts)));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -240,5 +281,73 @@ mod tests {
             result.is_err(),
             "old flat JSON format should not parse into new struct"
         );
+    }
+
+    #[test]
+    fn render_limits_current_and_weekly() {
+        let data = usage::UsageData {
+            current: Some(usage::WindowLimit {
+                utilization: 23.0,
+                resets_at: Some("2026-03-12T22:00:00.000000+00:00".to_string()),
+            }),
+            weekly: Some(usage::WindowLimit {
+                utilization: 12.0,
+                resets_at: Some("2026-03-19T07:00:00.000000+00:00".to_string()),
+            }),
+            extra: None,
+        };
+
+        let mut lines = Vec::new();
+        render_limits(&mut lines, &data);
+
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].starts_with("current"));
+        assert!(lines[0].contains("23%"));
+        assert!(lines[1].starts_with("weekly "));
+        assert!(lines[1].contains("12%"));
+    }
+
+    #[test]
+    fn render_limits_with_extra() {
+        let data = usage::UsageData {
+            current: None,
+            weekly: None,
+            extra: Some(usage::ExtraLimit {
+                is_enabled: true,
+                used_credits: Some(5.0),
+                monthly_limit: Some(20.0),
+                utilization: Some(25.0),
+                resets_at: Some("2026-04-01T00:00:00.000000+00:00".to_string()),
+            }),
+        };
+
+        let mut lines = Vec::new();
+        render_limits(&mut lines, &data);
+
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].starts_with("extra  "));
+        assert!(lines[0].contains("$5.00/$20.00"));
+        assert!(lines[1].starts_with("resets "));
+    }
+
+    #[test]
+    fn render_limits_extra_no_reset_date() {
+        let data = usage::UsageData {
+            current: None,
+            weekly: None,
+            extra: Some(usage::ExtraLimit {
+                is_enabled: false,
+                used_credits: None,
+                monthly_limit: None,
+                utilization: None,
+                resets_at: None,
+            }),
+        };
+
+        let mut lines = Vec::new();
+        render_limits(&mut lines, &data);
+
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains("$0.00/$0.00"));
     }
 }
