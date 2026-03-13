@@ -34,7 +34,7 @@ curl -fsSL https://raw.githubusercontent.com/rockia/claude-status/main/scripts/i
 
 ## Configuration
 
-Run `ccsl config` with no arguments to open an interactive checklist where you can toggle display items on/off:
+Run `~/.claude/claude-status config` with no arguments to open an interactive checklist where you can toggle display items on/off:
 
 ```
 Display items (space to toggle, enter to save):
@@ -54,9 +54,9 @@ Use arrow keys to navigate, space to toggle, enter to save. Ctrl-C exits without
 You can also manage config non-interactively:
 
 ```bash
-ccsl config list                        # show current visibility for all items
-ccsl config set <item> show|hide        # toggle a single item
-ccsl config reset                       # restore all defaults
+~/.claude/claude-status config list                        # show current visibility for all items
+~/.claude/claude-status config set <item> show|hide        # toggle a single item
+~/.claude/claude-status config reset                       # restore all defaults
 ```
 
 Available items: `effort_level`, `context_bar`, `rate_limit_current`, `rate_limit_weekly`, `rate_limit_extra`, `cost`, `git_info`, `duration`, `model_name`
