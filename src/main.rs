@@ -9,6 +9,7 @@ fn main() {
     match args.get(1).map(|s| s.as_str()) {
         Some("install") => install::install(),
         Some("uninstall") => install::uninstall(),
+        Some("update") => install::update(),
         _ => run_status_line(),
     }
 }
