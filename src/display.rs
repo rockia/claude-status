@@ -1,3 +1,4 @@
+use crate::config::DisplayConfig;
 use crate::context::ContextInfo;
 use crate::usage::UsageResponse;
 use chrono::{DateTime, Utc};
@@ -43,31 +44,52 @@ fn format_pct(pct: f64) -> String {
     format!("{}{:.0}%{}", color, pct, RESET)
 }
 
-pub fn render(ctx: &ContextInfo, usage: Option<&UsageResponse>) -> String {
-    let mut output = String::new();
+pub fn render(ctx: &ContextInfo, usage: Option<&UsageResponse>, cfg: &DisplayConfig) -> String {
+    let mut segments: Vec<String> = Vec::new();
 
-    // Line 1: model │ context% │ project (branch*) │ duration │ effort
-    output.push_str(&ctx.model_name);
-    output.push_str(&format!(" \u{2502} \u{1f4ac} {}%", ctx.context_pct));
-
-    let git_info = match (&ctx.git_branch, ctx.git_dirty) {
-        (Some(branch), true) => format!(" ({}*)", branch),
-        (Some(branch), false) => format!(" ({})", branch),
-        (None, _) => String::new(),
-    };
-    output.push_str(&format!(" \u{2502} {}{}", ctx.project_dir, git_info));
-
-    if let Some(dur) = &ctx.session_duration {
-        output.push_str(&format!(" \u{2502} \u{23f1} {}", dur));
+    // Model name
+    if cfg.model_name {
+        segments.push(ctx.model_name.clone());
     }
 
-    output.push_str(&format!(" \u{2502} \u{26a1} {}", ctx.effort_level));
+    // Context bar (% used)
+    if cfg.context_bar {
+        segments.push(format!("\u{1f4ac} {}%", ctx.context_pct));
+    }
+
+    // Project dir + optional git info
+    let git_info = if cfg.git_info {
+        match (&ctx.git_branch, ctx.git_dirty) {
+            (Some(branch), true) => format!(" ({}*)", branch),
+            (Some(branch), false) => format!(" ({})", branch),
+            (None, _) => String::new(),
+        }
+    } else {
+        String::new()
+    };
+    segments.push(format!("{}{}", ctx.project_dir, git_info));
+
+    // Duration
+    if cfg.duration
+        && let Some(dur) = &ctx.session_duration
+    {
+        segments.push(format!("\u{23f1} {}", dur));
+    }
+
+    // Effort level
+    if cfg.effort_level {
+        segments.push(format!("\u{26a1} {}", ctx.effort_level));
+    }
+
+    let line1 = segments.join(" \u{2502} ");
 
     // Rate limit lines
-    if let Some(usage) = usage {
-        let mut rate_lines = Vec::new();
+    let mut rate_lines: Vec<String> = Vec::new();
 
-        if let Some(five) = &usage.five_hour {
+    if let Some(usage) = usage {
+        if cfg.rate_limit_current
+            && let Some(five) = &usage.five_hour
+        {
             let util = five.utilization.unwrap_or(0.0);
             let reset = five
                 .resets_at
@@ -82,7 +104,9 @@ pub fn render(ctx: &ContextInfo, usage: Option<&UsageResponse>) -> String {
             ));
         }
 
-        if let Some(seven) = &usage.seven_day {
+        if cfg.rate_limit_weekly
+            && let Some(seven) = &usage.seven_day
+        {
             let util = seven.utilization.unwrap_or(0.0);
             let reset = seven
                 .resets_at
@@ -97,7 +121,8 @@ pub fn render(ctx: &ContextInfo, usage: Option<&UsageResponse>) -> String {
             ));
         }
 
-        if let Some(extra) = &usage.extra_usage
+        if cfg.rate_limit_extra
+            && let Some(extra) = &usage.extra_usage
             && extra.is_enabled.unwrap_or(false)
         {
             let util = extra.utilization.unwrap_or(0.0);
@@ -116,14 +141,13 @@ pub fn render(ctx: &ContextInfo, usage: Option<&UsageResponse>) -> String {
                 reset,
             ));
         }
-
-        if !rate_lines.is_empty() {
-            output.push_str("\n\n");
-            output.push_str(&rate_lines.join("\n"));
-        }
     }
 
-    output
+    if rate_lines.is_empty() {
+        line1
+    } else {
+        format!("{}\n\n{}", line1, rate_lines.join("\n"))
+    }
 }
 
 fn format_reset_time_short(ts: &str) -> String {
@@ -292,7 +316,7 @@ mod tests {
     #[test]
     fn test_render_line1_full() {
         let ctx = make_ctx("Claude Sonnet 4", 23, "my-project", Some("main"), true);
-        let output = render(&ctx, None);
+        let output = render(&ctx, None, &DisplayConfig::default());
         assert!(output.contains("Claude Sonnet 4"));
         assert!(output.contains("23%"));
         assert!(output.contains("my-project (main*)"));
@@ -303,7 +327,7 @@ mod tests {
     #[test]
     fn test_render_line1_clean_branch() {
         let ctx = make_ctx("Claude Sonnet 4", 10, "my-project", Some("main"), false);
-        let output = render(&ctx, None);
+        let output = render(&ctx, None, &DisplayConfig::default());
         assert!(output.contains("my-project (main)"));
         assert!(!output.contains("main*"));
     }
@@ -311,7 +335,7 @@ mod tests {
     #[test]
     fn test_render_line1_no_git() {
         let ctx = make_ctx("Claude Sonnet 4", 10, "my-project", None, false);
-        let output = render(&ctx, None);
+        let output = render(&ctx, None, &DisplayConfig::default());
         assert!(output.contains("my-project"));
         assert!(!output.contains("("));
     }
@@ -319,7 +343,7 @@ mod tests {
     #[test]
     fn test_render_no_usage_no_rate_lines() {
         let ctx = make_ctx("Model", 10, "proj", None, false);
-        let output = render(&ctx, None);
+        let output = render(&ctx, None, &DisplayConfig::default());
         assert!(!output.contains("current"));
         assert!(!output.contains("weekly"));
         assert!(!output.contains('\n'));
@@ -341,7 +365,7 @@ mod tests {
             }),
             extra_usage: None,
         };
-        let output = render(&ctx, Some(&usage));
+        let output = render(&ctx, Some(&usage), &DisplayConfig::default());
         let plain = strip_ansi(&output);
         assert!(plain.contains("current"));
         assert!(plain.contains("23%"));
@@ -360,7 +384,7 @@ mod tests {
             seven_day: None,
             extra_usage: None,
         };
-        let output = render(&ctx, Some(&usage));
+        let output = render(&ctx, Some(&usage), &DisplayConfig::default());
         assert!(output.contains("\n\n"));
     }
 
@@ -378,7 +402,7 @@ mod tests {
                 resets_at: None,
             }),
         };
-        let output = render(&ctx, Some(&usage));
+        let output = render(&ctx, Some(&usage), &DisplayConfig::default());
         let plain = strip_ansi(&output);
         assert!(plain.contains("extra"));
         assert!(plain.contains("$5.00/$50.00"));
@@ -398,7 +422,7 @@ mod tests {
                 resets_at: None,
             }),
         };
-        let output = render(&ctx, Some(&usage));
+        let output = render(&ctx, Some(&usage), &DisplayConfig::default());
         assert!(!output.contains("extra"));
     }
 
@@ -422,7 +446,7 @@ mod tests {
                 resets_at: None,
             }),
         };
-        let output = render(&ctx, Some(&usage));
+        let output = render(&ctx, Some(&usage), &DisplayConfig::default());
         let lines: Vec<&str> = output.split('\n').collect();
         // Line 0: info line, Line 1: blank, Lines 2+: rate lines
         assert!(lines.len() >= 4);
@@ -461,5 +485,100 @@ mod tests {
         assert!(!result.is_empty());
         assert!(result.contains("Mar"), "Expected 'Mar' in: {result}");
         assert!(!result.contains("mar"), "Got lowercase 'mar' in: {result}");
+    }
+
+    // --- Config-gating tests ---
+
+    #[test]
+    fn test_render_hidden_effort_level() {
+        let ctx = make_ctx("Model", 10, "proj", Some("main"), false);
+        let mut cfg = DisplayConfig::default();
+        cfg.effort_level = false;
+        let output = render(&ctx, None, &cfg);
+        assert!(!output.contains('\u{26a1}')); // ⚡ not present
+        assert!(!strip_ansi(&output).contains("default")); // effort label absent
+    }
+
+    #[test]
+    fn test_render_hidden_model_name() {
+        let ctx = make_ctx("Claude Sonnet 4", 10, "proj", None, false);
+        let mut cfg = DisplayConfig::default();
+        cfg.model_name = false;
+        let output = render(&ctx, None, &cfg);
+        assert!(!output.contains("Claude Sonnet 4"));
+    }
+
+    #[test]
+    fn test_render_hidden_context_bar() {
+        let ctx = make_ctx("Model", 55, "proj", None, false);
+        let mut cfg = DisplayConfig::default();
+        cfg.context_bar = false;
+        let output = strip_ansi(&render(&ctx, None, &cfg));
+        assert!(!output.contains("55%"));
+        assert!(!output.contains('\u{1f4ac}')); // 💬 not present
+    }
+
+    #[test]
+    fn test_render_hidden_git_info() {
+        let ctx = make_ctx("Model", 10, "proj", Some("feature-x"), true);
+        let mut cfg = DisplayConfig::default();
+        cfg.git_info = false;
+        let output = render(&ctx, None, &cfg);
+        assert!(!output.contains("feature-x"));
+        assert!(!output.contains('*'));
+        assert!(output.contains("proj")); // project dir still shown
+    }
+
+    #[test]
+    fn test_render_hidden_duration() {
+        let ctx = make_ctx("Model", 10, "proj", None, false);
+        let mut cfg = DisplayConfig::default();
+        cfg.duration = false;
+        let output = render(&ctx, None, &cfg);
+        assert!(!output.contains("1h 23m"));
+        assert!(!output.contains('\u{23f1}')); // ⏱ not present
+    }
+
+    #[test]
+    fn test_render_hidden_rate_limit_current() {
+        let ctx = make_ctx("Model", 10, "proj", None, false);
+        let mut cfg = DisplayConfig::default();
+        cfg.rate_limit_current = false;
+        let usage = UsageResponse {
+            five_hour: Some(UsagePeriod {
+                utilization: Some(50.0),
+                resets_at: None,
+            }),
+            seven_day: Some(UsagePeriod {
+                utilization: Some(20.0),
+                resets_at: None,
+            }),
+            extra_usage: None,
+        };
+        let output = strip_ansi(&render(&ctx, Some(&usage), &cfg));
+        assert!(!output.contains("current"));
+        assert!(output.contains("weekly")); // other rows still shown
+    }
+
+    #[test]
+    fn test_render_all_hidden_no_blank_lines() {
+        let ctx = make_ctx("Model", 10, "proj", None, false);
+        let mut cfg = DisplayConfig::default();
+        cfg.rate_limit_current = false;
+        cfg.rate_limit_weekly = false;
+        cfg.rate_limit_extra = false;
+        let usage = UsageResponse {
+            five_hour: Some(UsagePeriod {
+                utilization: Some(10.0),
+                resets_at: None,
+            }),
+            seven_day: Some(UsagePeriod {
+                utilization: Some(10.0),
+                resets_at: None,
+            }),
+            extra_usage: None,
+        };
+        let output = render(&ctx, Some(&usage), &cfg);
+        assert!(!output.contains('\n'), "Expected no newlines: {output:?}");
     }
 }

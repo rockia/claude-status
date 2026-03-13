@@ -1,3 +1,5 @@
+mod config;
+mod config_cmd;
 mod context;
 mod display;
 mod install;
@@ -10,6 +12,7 @@ fn main() {
         Some("install") => install::install(),
         Some("uninstall") => install::uninstall(),
         Some("update") => install::update(),
+        Some("config") => config_cmd::run_config(&args[2..]),
         _ => run_status_line(),
     }
 }
@@ -22,7 +25,8 @@ fn run_status_line() {
 
     let ctx = context::build_context(&input);
     let usage = usage::fetch_usage();
+    let cfg = config::DisplayConfig::load();
 
-    let output = display::render(&ctx, usage.as_ref());
+    let output = display::render(&ctx, usage.as_ref(), &cfg);
     print!("{}", output);
 }
