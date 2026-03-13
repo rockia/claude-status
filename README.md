@@ -3,10 +3,10 @@
 A rich status line for [Claude Code](https://claude.com/claude-code) written in Rust. Shows model info, context window usage, git branch, session duration, and rate limit consumption at a glance.
 
 ```
-Claude Sonnet 4 │ ✍️ 23% │ my-project (main*) │ ⏱ 1h 23m │ ◑ default
+Claude Sonnet 4 │ 💬 23% │ my-project (main*) │ ⏱ 1h 23m │ ⚡ default
 
 current ▰▰▱▱▱▱▱▱▱▱  23% ⟳ 3:30pm
-weekly  ▰▰▰▰▱▱▱▱▱▱  45% ⟳ mar 19, 12:00am
+weekly  ▰▰▰▰▱▱▱▱▱▱  45% ⟳ Mar 19, 12:00am
 extra   ▰▱▱▱▱▱▱▱▱▱ $5.00/$50.00
 ```
 
