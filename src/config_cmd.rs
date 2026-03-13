@@ -25,7 +25,10 @@ pub fn run_config(args: &[String]) {
 
 fn cmd_interactive() {
     let cfg = DisplayConfig::load();
-    let defaults: Vec<bool> = ITEM_NAMES.iter().map(|n| cfg.get(n).unwrap_or(true)).collect();
+    let defaults: Vec<bool> = ITEM_NAMES
+        .iter()
+        .map(|n| cfg.get(n).unwrap_or(true))
+        .collect();
 
     let selections = match MultiSelect::new()
         .with_prompt("Display items (space to toggle, enter to save)")
