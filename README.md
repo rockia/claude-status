@@ -6,7 +6,7 @@ A rich status line for [Claude Code](https://claude.com/claude-code) written in 
 Claude Sonnet 4 │ 💬 23% │ my-project (main*) │ ⏱ 1h 23m │ ⚡ default
 
 current ▰▰▱▱▱▱▱▱▱▱  23% ⟳ 3:30pm
-weekly  ▰▰▰▰▱▱▱▱▱▱  45% ⟳ mar 19, 12:00am
+weekly  ▰▰▰▰▱▱▱▱▱▱  45% ⟳ Mar 19, 12:00am
 extra   ▰▱▱▱▱▱▱▱▱▱ $5.00/$50.00
 ```
 
