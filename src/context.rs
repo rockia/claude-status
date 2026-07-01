@@ -2,7 +2,10 @@ use chrono::{DateTime, Utc};
 use serde::Deserialize;
 use std::io::Read;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
+use std::time::{Duration, Instant};
+
+const GIT_TIMEOUT: Duration = Duration::from_millis(200);
 
 #[derive(Deserialize)]
 pub struct StdinInput {
@@ -111,11 +114,10 @@ pub(crate) fn compute_context_pct(input: &StdinInput) -> u64 {
 }
 
 fn get_git_branch(cwd: &str) -> Option<String> {
-    let output = Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .current_dir(cwd)
-        .output()
-        .ok()?;
+    let mut cmd = Command::new("git");
+    cmd.args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(cwd);
+    let output = run_with_timeout(&mut cmd, GIT_TIMEOUT)?;
     if !output.status.success() {
         return None;
     }
@@ -128,13 +130,35 @@ fn get_git_branch(cwd: &str) -> Option<String> {
 }
 
 fn is_git_dirty(cwd: &str) -> bool {
-    Command::new("git")
-        .args(["status", "--porcelain"])
-        .current_dir(cwd)
-        .output()
-        .ok()
+    let mut cmd = Command::new("git");
+    cmd.args(["status", "--porcelain"]).current_dir(cwd);
+    run_with_timeout(&mut cmd, GIT_TIMEOUT)
         .map(|o| !o.stdout.is_empty())
         .unwrap_or(false)
+}
+
+/// Runs `cmd`, killing and returning `None` if it doesn't finish within `timeout`.
+pub(crate) fn run_with_timeout(cmd: &mut Command, timeout: Duration) -> Option<Output> {
+    let mut child = cmd
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .ok()?;
+    let start = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => return child.wait_with_output().ok(),
+            Ok(None) => {
+                if start.elapsed() >= timeout {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(_) => return None,
+        }
+    }
 }
 
 pub(crate) fn format_duration(start_time: &str) -> Option<String> {
@@ -373,5 +397,28 @@ mod tests {
         let input: StdinInput = serde_json::from_str(json).unwrap();
         assert!(input.model.is_none());
         assert!(input.context_window.is_none());
+    }
+
+    #[test]
+    fn test_run_with_timeout_returns_output_for_fast_command() {
+        let mut cmd = Command::new("echo");
+        cmd.arg("hello");
+        let output = run_with_timeout(&mut cmd, std::time::Duration::from_secs(2));
+        let output = output.expect("fast command should complete");
+        assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), "hello");
+    }
+
+    #[test]
+    fn test_run_with_timeout_returns_none_for_slow_command() {
+        let mut cmd = Command::new("sleep");
+        cmd.arg("2");
+        let start = std::time::Instant::now();
+        let output = run_with_timeout(&mut cmd, std::time::Duration::from_millis(100));
+        let elapsed = start.elapsed();
+        assert!(output.is_none(), "slow command should time out");
+        assert!(
+            elapsed < std::time::Duration::from_secs(1),
+            "should not wait for the full slow command, took {elapsed:?}"
+        );
     }
 }
